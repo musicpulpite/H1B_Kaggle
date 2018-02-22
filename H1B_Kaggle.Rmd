@@ -1,0 +1,48 @@
+---
+title: "H1-B Work Visa Applications 2011-2016"
+author: "William M."
+date: "February 18, 2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+````{r required packages, echo=FALSE, cache=TRUE}
+require(ggplot2)
+library(readr)
+h1b_kaggle <- read_csv("~/R Files/h1b_kaggle.csv")
+source('~/R Files/Reducenames.R')
+h1b_kaggle<-new_dataframe(h1b_kaggle)
+````  
+
+````{r time series plots, echo=TRUE, cache=TRUE}
+#using aggregate functions plot the top ten most frequently applied for visa job
+#categories (SOC Name)
+h1b_agg<-aggregate(SOC_NAME~YEAR+names_class, h1b_kaggle, FUN=length, na.action = NULL)
+h1b_agg2<-aggregate(SOC_NAME~names_class, h1b_agg, FUN=sum)
+h1b_agg2<-h1b_agg2[order(-h1b_agg2$SOC_NAME),]
+h1b_aggfinal<-h1b_agg[h1b_agg$names_class %in% h1b_agg2$names_class[1:10], ]
+h1b_aggnames<-cbind(unique(h1b_aggfinal$names_class), h1b_kaggle[match(unique(h1b_aggfinal$names_class), h1b_kaggle$names_class), "SOC_NAME"])
+h1b_aggfinal$names_class<-h1b_aggnames[match(h1b_aggfinal$names_class, h1b_aggnames[,1]),2]
+
+#ggplot argument
+ggplot(h1b_aggfinal, aes(x=YEAR, y=SOC_NAME, colour=names_class))+geom_line()
+
+################
+
+#same thing but now only counting certified cases (but using the same top ten categories)
+h1bcert_agg<-aggregate(SOC_NAME~YEAR+names_class, h1b_kaggle[h1b_kaggle$CASE_STATUS=="CERTIFIED",], FUN=length, na.action = NULL)
+h1bcert_agg2<-aggregate(SOC_NAME~names_class, h1bcert_agg, FUN=sum)
+h1bcert_agg2<-h1bcert_agg2[order(-h1bcert_agg2$SOC_NAME),]
+h1bcert_aggfinal<-h1bcert_agg[h1bcert_agg$names_class %in% h1bcert_agg2$names_class[1:10], ]
+
+#technically redundant since were using the same ordered list of job categories as before
+#h1b_aggnames<-cbind(unique(h1b_aggfinal$names_class), h1b_kaggle[match(unique(h1b_aggfinal$names_class), #h1b_kaggle$names_class), "SOC_NAME"])
+h1bcert_aggfinal$names_class<-h1b_aggnames[match(h1bcert_aggfinal$names_class, h1b_aggnames[,1]),2]
+
+#similar plot
+ggplot(h1bcert_aggfinal, aes(x=YEAR, y=SOC_NAME, colour=names_class))+geom_line()
+````  
+
+````{r percent change by year, echo=TRUE, cache=TRUE}
+
