@@ -3,19 +3,44 @@ title: "H1-B Work Visa Applications 2011-2016"
 author: "William M."
 date: "February 18, 2018"
 output:
-  html_document: default
   pdf_document: default
+  html_document: default
 ---
 
-````{r required packages, echo=FALSE, cache=TRUE}
+````{r required packages, echo=FALSE, cache=TRUE, message=FALSE, warning=FALSE}
 require(ggplot2)
 library(readr)
-h1b_kaggle <- read_csv("~/R Files/h1b_kaggle.csv")
+h1b_kaggle <- read_csv("h1b_kaggle.csv")
 source('~/R Files/Reducenames.R')
 h1b_kaggle<-new_dataframe(h1b_kaggle)
 ````  
 
-````{r time series plots, echo=TRUE, cache=TRUE}
+#Investigating H1B-Visa Application Data from 2011-2016
+Using a publicly available dataset documenting the total number of H1B applications (both certified and rejected) for the years 2011-2016 we hope to gain insight into the phenomenon of temporary work visas in the United States. H1B visas are awarded to foreign workers with *specialized skills* who have already been offered employment in the United States on a temporary basis (initially 3 years). The certified applications from this dataset are then considered for final approval. H1B visas are awarded by the United States Citizenship and Immigration Services and awarded on a first come, first served basis with a total cap of 85,000 work visas per year.  
+Source: https://www.kaggle.com/nsharan/h-1b-visa
+User: Sharan Naribole  
+
+###Cleaning up the SOC_NAME Variable  
+The SOC_NAME variable in this dataset is the job category of the job being applied for based on the Standard Occupational Classification guidelines. The immediate problem in working with this data is that each case does not include the associated SOC code and that the SOC names are inconsistently recorded. For example, in the entire dataset there are 21,251 cases with job categories variously recorded as:  
+````{r soc redundancy example, echo=FALSE, cache=TRUE}
+unique(h1b_kaggle[h1b_kaggle$names_class==1, "SOC_NAME"])
+````  
+Clearly, all of these cases should be considered to be in the same job category.  
+In order to aggregate cases that clearly belong to the same SOC_NAME but contain spelling errors or abbreviations we wrote the new_dataframe R script saved in the ReduceNames.R file. In short this function calculates the adist string distance (this distance is the minimum number of additions, deletions, or substitutions needed to interchange the two strings) between every pair of unique SOC_NAME's and assigns them to a new variable called "names_class" where every SOC_NAME assigned to the same "names_class" is within a fixed distance to the other names in that class.    
+This way we can safely aggregate each application based on its "names_class" and assume that these aggregate cases are the same within a small margin of error.  
+
+##Exploratory analysis  
+The distribution of prevailing wages for all jobs applied to is.  
+````{r wages histogram, echo=TRUE, cahce=TRUE}
+hist(h1b_kaggle$PREVAILING_WAGE[h1b_kaggle$PREVAILING_WAGE < 200000], breaks = 200, xlim=c(0,200000), main="Histogram of Prevailing Wages")
+````  
+To make the histogram more readable we are only including wages under $200,000 which accounts for 99.65% of all wages.  
+
+##Investigations  
+
+###Time Series Plots of the 10 Highest Volume Jobs  
+Looking at only the ten most frequently applied for job categories over all years we plot volume by year. Following that plot, we repeat the process but only count certified applications.
+````{r time series plots, echo=TRUE, cache=TRUE, fig.align="center"}
 #using aggregate functions plot the top ten most frequently applied for visa job
 #categories (SOC Name)
 h1b_agg<-aggregate(SOC_NAME~YEAR+names_class, h1b_kaggle, FUN=length, na.action = NULL)
@@ -26,7 +51,7 @@ h1b_aggnames<-cbind(unique(h1b_aggfinal$names_class), h1b_kaggle[match(unique(h1
 h1b_aggfinal$names_class<-h1b_aggnames[match(h1b_aggfinal$names_class, h1b_aggnames[,1]),2]
 
 #ggplot argument
-ggplot(h1b_aggfinal, aes(x=YEAR, y=SOC_NAME, colour=names_class))+geom_line()
+ggplot(h1b_aggfinal, aes(x=YEAR, y=SOC_NAME, colour=names_class))+geom_line()+ylab("Volume Applications")+ggtitle("Total Number of Applications by Job Category")
 
 ################
 
@@ -41,8 +66,57 @@ h1bcert_aggfinal<-h1bcert_agg[h1bcert_agg$names_class %in% h1bcert_agg2$names_cl
 h1bcert_aggfinal$names_class<-h1b_aggnames[match(h1bcert_aggfinal$names_class, h1b_aggnames[,1]),2]
 
 #similar plot
-ggplot(h1bcert_aggfinal, aes(x=YEAR, y=SOC_NAME, colour=names_class))+geom_line()
+ggplot(h1bcert_aggfinal, aes(x=YEAR, y=SOC_NAME, colour=names_class))+geom_line()+ylab("Volume Applications")+ggtitle("Total Number of Certified Applications by Job Category")
+````  
+Interestingly enough the plots look identical except for scale. This leads us to believe that the proportion of certified applications for each of these jobs over each year was approximately constant. We investigate this question again for all job categories (rather than just the top 10 most frequent) and find this to be true generally.   
+
+###Fastest Growing Occupations  
+We produce dataframes showing the percent change over the previous year in applications for each job category along with the total volume of applications for that year.  
+In order to do this we had to take the intersection of the job category lists over all years- only considering job categories that had applications for every year in this dataset.  
+````{r percent change by year, echo=TRUE, cache=TRUE}
+#We need to clean up the h1b_agg dataframe - which counts the number of occurences of each names_class(job category) for each year- to include only those names_class(job category) that had occurences for EVERY year. This allows us to make easier comparisons across years.
+namesclass_intersection<-Reduce(intersect, list(h1b_agg[h1b_agg$YEAR==2011,"names_class"],h1b_agg[h1b_agg$YEAR==2012,"names_class"],h1b_agg[h1b_agg$YEAR==2013,"names_class"],h1b_agg[h1b_agg$YEAR==2014,"names_class"],h1b_agg[h1b_agg$YEAR==2015,"names_class"],h1b_agg[h1b_agg$YEAR==2016,"names_class"]))
+h1b_agg<-h1b_agg[h1b_agg$names_class %in% namesclass_intersection,]
+
+#Produce 5 different dataframes with the percent change for each names_class(job category)- these have been paired down above- for each year over the previous year. Also preserve the raw number of total applications in another column.
+for (i in 2012:2016){
+      assign(paste("PercentChange_",i,sep=""), data.frame("JobCategory"=h1b_kaggle[unique(match(h1b_agg$names_class, h1b_kaggle$names_class)), "SOC_NAME"], "PercentChange"=100*(h1b_agg[h1b_agg$YEAR==i, "SOC_NAME"]-h1b_agg[h1b_agg$YEAR==i-1, "SOC_NAME"])/h1b_agg[h1b_agg$YEAR==i-1, "SOC_NAME"], "Total"=h1b_agg[h1b_agg$YEAR==i, "SOC_NAME"]))
+}
+df12<-PercentChange_2012[PercentChange_2012$Total > 1000,]
+df12[order(-df12$PercentChange),][1:10,]
+df13<-PercentChange_2013[PercentChange_2013$Total > 1000,]
+df13[order(-df13$PercentChange),][1:10,]
+df14<-PercentChange_2014[PercentChange_2014$Total > 1000,]
+df14[order(-df14$PercentChange),][1:10,]
+df15<-PercentChange_2015[PercentChange_2015$Total > 1000,]
+df15[order(-df15$PercentChange),][1:10,]
+df16<-PercentChange_2016[PercentChange_2016$Total > 1000,]
+df16[order(-df16$PercentChange),][1:10,]
+````  
+Not surprisingly, almost all of the fastest growing job categories are Computer Science/Technology occupations.  
+As a technical note, we disregarded job categories with less thatn 1000 applications for any given year in order to avoid anomalous growth rates.  
+
+###Histogram of Certification rate over all Job Categories  
+We aggregate the numbers of certified cases over the total number of cases for every job category (defined by the names_class varable) to look for anomalies in certification rates. The distribution turns out to be skewed normal indicating that different job categories are not considered preferentially for certification.  
+````{r certification rate hist, echo=TRUE, cache=TRUE}
+#We need to clean up the h1b_agg dataframe - which counts the number of occurences of each names_class(job category) for each year- to include only those names_class(job category) that had occurences for EVERY year. This allows us to make easier comparisons across years.
+namesclass_intersection<-Reduce(intersect, list(h1b_agg[h1b_agg$YEAR==2011,"names_class"],h1b_agg[h1b_agg$YEAR==2012,"names_class"],h1b_agg[h1b_agg$YEAR==2013,"names_class"],h1b_agg[h1b_agg$YEAR==2014,"names_class"],h1b_agg[h1b_agg$YEAR==2015,"names_class"],h1b_agg[h1b_agg$YEAR==2016,"names_class"]))
+h1b_agg3<-h1b_agg[h1b_agg$names_class %in% namesclass_intersection,]
+namesclass_intersection2<-Reduce(intersect, list(h1bcert_agg[h1bcert_agg$YEAR==2011,"names_class"],h1bcert_agg[h1bcert_agg$YEAR==2012,"names_class"],h1bcert_agg[h1bcert_agg$YEAR==2013,"names_class"],h1bcert_agg[h1bcert_agg$YEAR==2014,"names_class"],h1bcert_agg[h1bcert_agg$YEAR==2015,"names_class"],h1bcert_agg[h1bcert_agg$YEAR==2016,"names_class"]))
+h1bcert_agg3<-h1bcert_agg[h1bcert_agg$names_class %in% namesclass_intersection2,]
+#h1bcert_agg3 has 108 fewer rows than h1b_agg3, indicating that some rows were excluded due to certain years having length 0
+#we want to add in these zero values. To do so, we have to know the names_class values of the excluded rows
+namesclass_diff <- setdiff(unique(h1b_agg3$names_class),unique(h1bcert_agg3$names_class))
+#now, we want to add 108 rows with names_class values equal to these to the h1bcert_agg3 df
+cert_zeroes_mat <- cbind(rep(2011:2016,18),rep(namesclass_diff,each=6),rep(0,108))
+colnames(cert_zeroes_mat) = c("YEAR","names_class","SOC_NAME")
+zeroes_df <- as.data.frame(cert_zeroes_mat)
+h1bcert_zeroes <- rbind(h1bcert_agg3,zeroes_df)
+h1bcert_zeroes <- h1bcert_zeroes[order(h1bcert_zeroes$names_class),]
+h1b_agg3 <- h1b_agg3[order(h1b_agg3$names_class),]
+qplot(h1bcert_zeroes$SOC_NAME/h1b_agg3$SOC_NAME,geom="histogram",binwidth=1/100,xlim=c(0,1.0),ylim=c(0,300), xlab="Certification Rate(as a ratio)")
 ````  
 
-````{r percent change by year, echo=TRUE, cache=TRUE}
+
+
 
